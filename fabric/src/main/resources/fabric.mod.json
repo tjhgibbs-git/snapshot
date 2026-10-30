@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "savepoint",
+  "version": "${version}",
+  "name": "Savepoint",
+  "description": "Take a savepoint of your singleplayer world, playtest, and revert in one click.",
+  "authors": ["tjhgibbs"],
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.tjhgibbs.savepoint.mod.SavepointMod"],
+    "client": ["io.github.tjhgibbs.savepoint.client.SavepointClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

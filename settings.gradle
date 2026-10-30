@@ -1,0 +1,34 @@
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+	plugins {
+		id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	}
+}
+
+rootProject.name = 'savepoint'
+
+// `core` is plain Java (no Minecraft): the generator, voxeliser, exporters and preview renderer.
+// `fabric` is the mod itself and needs maven.fabricmc.net + Mojang's servers to configure.
+// Pass -PcoreOnly (or set SAVEPOINT_CORE_ONLY=1) to build and test `core` where those are blocked.
+include 'core'
+if (!providers.gradleProperty('coreOnly').present && System.getenv('SAVEPOINT_CORE_ONLY') == null) {
+	include 'fabric'
+
+	// Dev-only UI tooling: when a block-scraper checkout is found (sibling ../block-scraper, or
+	// -Pblockscraper.dir=<path>), its projects join this build and `:fabric:runBlockScraper` opens a
+	// client that the block-scraper CLI can drive. Nothing from it is shipped in the Savepoint jar.
+	def scraperDir = file(providers.gradleProperty('blockscraper.dir').getOrElse('../block-scraper'))
+	if (new File(scraperDir, 'block-scraper-mod').isDirectory()) {
+		['block-scraper-core', 'block-scraper-agent', 'block-scraper-mod'].each { name ->
+			include name
+			project(":${name}").projectDir = new File(scraperDir, name)
+		}
+	}
+}

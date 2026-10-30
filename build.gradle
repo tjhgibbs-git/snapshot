@@ -1,0 +1,9 @@
+// Root project: shared settings only. See core/build.gradle and fabric/build.gradle.
+subprojects {
+	group = rootProject.maven_group
+	version = rootProject.mod_version
+
+	repositories {
+		mavenCentral()
+	}
+}

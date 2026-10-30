@@ -65,4 +65,16 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 
 ## Progress
 (update this list at the end of every chunk)
-- [ ] 0  - [ ] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
+- [x] 0  - [ ] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
+
+## Notes for next chunk
+- Build: `export JAVA_HOME=~/.local/jdk/jdk-25.0.5+8 PATH=$JAVA_HOME/bin:$PATH; ./gradlew build` (~45 s warm).
+  The wrapper needs JAVA_HOME/PATH set in a fresh shell; ~/.gradle/gradle.properties alone is not enough.
+- Layout: `core` (java-library, release 21, JUnit 5, `perf`-tagged tests only with -Pperf), `fabric` (Loom,
+  split client source set, `gametest` source set with placeholder `ScaffoldGameTests`, core jar-in-jar).
+  Package roots: `io.github.tjhgibbs.savepoint.{core,mod,client,gametest}`.
+- Block-scraper wiring is live: `./gradlew :fabric:runBlockScraper` exists (only configured, not launched).
+  `fabric/build.gradle` comment refers to a not-yet-existing `client.SavepointScreen` class.
+- `-PcoreOnly` or env `SAVEPOINT_CORE_ONLY=1` builds core alone.
+- `unzip` is not installed; use `jar tf` to inspect jars. No Sylvan code was ported.
+- Gametests were not run (placeholder only); `./gradlew build` does not run them.

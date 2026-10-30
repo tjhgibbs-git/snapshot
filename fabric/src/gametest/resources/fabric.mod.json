@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "savepoint-gametest",
+  "version": "0.0.0",
+  "name": "Savepoint GameTests",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": ["io.github.tjhgibbs.savepoint.gametest.ScaffoldGameTests"]
+  },
+  "depends": {
+    "fabric-gametest-api-v1": "*"
+  }
+}

@@ -1,0 +1,36 @@
+// Pure-Java savepoint store (mca, blobs, manifests). Must never depend on Minecraft.
+plugins {
+	id 'java-library'
+}
+
+java {
+	withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+	// 21 so the core builds on JDKs older than Minecraft's 25; the mod runs it on 25 just fine.
+	it.options.release = 21
+	it.options.encoding = 'UTF-8'
+}
+
+dependencies {
+	testImplementation platform("org.junit:junit-bom:${rootProject.junit_version}")
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testImplementation 'org.junit.jupiter:junit-jupiter-params'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+	useJUnitPlatform {
+		// `perf` tests build large synthetic worlds; run them with -Pperf.
+		if (!project.hasProperty('perf')) {
+			excludeTags 'perf'
+		}
+	}
+	maxHeapSize = '2g'
+	systemProperty 'java.awt.headless', 'true'
+	testLogging {
+		events 'failed', 'skipped'
+		exceptionFormat 'full'
+	}
+}

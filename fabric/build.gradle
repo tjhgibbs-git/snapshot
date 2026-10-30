@@ -1,0 +1,81 @@
+// The Fabric mod. Wraps :core (pure Java) with the GUI, placement, networking and file export.
+// Needs maven.fabricmc.net and Mojang's servers; see settings.gradle for building core alone.
+plugins {
+	// Plugin id for non-obfuscated (26.x) Minecraft, as used by tjhgibbs-git/14erfabric.
+	id 'net.fabricmc.fabric-loom'
+}
+
+base {
+	archivesName = rootProject.archives_base_name
+}
+
+loom {
+	// Client-only code (screens, key binding, preview texture) lives in src/client so the
+	// dedicated server never loads it.
+	splitEnvironmentSourceSets()
+	mods {
+		savepoint {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+
+	implementation project(':core')
+	// Jar-in-jar: ship core inside the mod jar. Loader gives non-mod jars generated metadata.
+	include project(':core')
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = 'UTF-8'
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filesMatching('fabric.mod.json') {
+		expand 'version': project.version
+	}
+}
+
+// Server GameTests (src/gametest). VERIFY against docs.fabricmc.net/develop/automatic-testing;
+// this block is copied from 14erfabric, where it ran on 26.3.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'savepoint-gametest'
+		enableGameTests = true
+		enableClientGameTests = false
+		eula = true
+	}
+}
+
+// Dev-only: drive a client from the block-scraper CLI to look at the GUI (see settings.gradle).
+// `./gradlew :fabric:runBlockScraper`, or from the block-scraper CLI:
+//   block-scraper start --project-dir <this repo> --task :fabric:runBlockScraper
+//   block-scraper open class:io.github.tjhgibbs.savepoint.client.SavepointScreen
+def scraperMod = findProject(':block-scraper-mod')
+if (scraperMod != null) {
+	dependencies {
+		localRuntime scraperMod
+	}
+	loom {
+		mods {
+			'block-scraper' {
+				sourceSet 'main', ':block-scraper-mod'
+			}
+		}
+	}
+	apply from: new File(scraperMod.projectDir.parentFile, 'gradle/block-scraper.gradle')
+}
