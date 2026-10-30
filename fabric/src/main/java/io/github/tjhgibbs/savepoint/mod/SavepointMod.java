@@ -1,6 +1,8 @@
 package io.github.tjhgibbs.savepoint.mod;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +13,11 @@ public final class SavepointMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        SavepointConfig.load();
+        SavepointNetworking.register();
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> SavepointCommands.register(dispatcher));
+        ServerLifecycleEvents.SERVER_STARTED.register(SavepointService::start);
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> SavepointService.stop());
         LOG.info("Savepoint ready");
     }
 }

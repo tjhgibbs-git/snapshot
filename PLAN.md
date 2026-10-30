@@ -65,7 +65,7 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 
 ## Progress
 (update this list at the end of every chunk)
-- [x] 0  - [x] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
+- [x] 0  - [x] 1  - [x] 2  - [ ] 3  - [ ] 4  - [ ] 5
 
 ## Notes for next chunk
 - Build: `export JAVA_HOME=~/.local/jdk/jdk-25.0.5+8 PATH=$JAVA_HOME/bin:$PATH; ./gradlew build` (~45 s warm).
@@ -101,3 +101,24 @@ Real-world test copies `.../saves/Mods Demo World` and is skipped if absent.
 - Timings (this box, WSL): ~937 MB synthetic world: create 4.3 s, unchanged re-create 0.1 s, restore of 1 region 0.12 s, zip 3.5 s, verify 0.8 s.
   Real Mods Demo World (22 MB on disk, 2 MB payload): create 0.4 s, restore 0.03 s.
 - Fabric module not rebuilt in this chunk (only core touched).
+
+## Notes for next chunk (from chunk 2: server integration + commands)
+Fabric main package `io.github.tjhgibbs.savepoint.mod`. Core additions: `core.Settings` (record + key table `Settings.specs()` with key/description/valueHint/get/set,
+`with(key,value)` throws IllegalArgumentException with user-presentable message), `core.Cooldown`, `core.IdResolver`. Tests in core `ServiceLogicTest`.
+- Config: `SavepointConfig.get()/set(Settings)/setInMemory/load/save`, file `config/savepoint.properties`. Keys: storeBudgetGb=10 (0=unlimited), keepNewest=3,
+  cooldownSeconds=10 (0=off), fullBackupMode=OFF|SESSION|EVERY (SESSION), fullBackupKeep=3. UI should build rows from `Settings.specs()` (description + valueHint).
+- `SavepointService.current()` (null on dedicated/not started). Created on SERVER_STARTED, closed on SERVER_STOPPING. Store root `<gameDir>/savepoints/<worldFolder>/`, zips in `backups/`.
+  All player-taking methods: server thread only. `createManual(p,name)`, `createQuick(p)` (cooldown, chat line with [Revert][Pin], prune, backup offer, pushes list),
+  `createUndoPoint(p)` throws IOException (no cooldown/chat; p may be null; chunk 3 must abort revert on failure), `checkCooldown(p)`/`markCooldown()`/`cooldownRemaining()`
+  (shared timer: chunk 3 must call both for revert), `revert(p, token)` -> `RevertHandler` (set with `SavepointService.setRevertHandler`, default prints "not implemented"),
+  `list/info/rename/pin/delete/status/showConfig/setConfig/backup/sendList`, `resolve(p, token)`, `store()`, `worldDir()`, `server()`, `mayUse(p)`.
+  Mutations are refused with a chat message while a full backup zip is being written (the store lock would otherwise block the server thread).
+- Create runs ON the server thread: `server.saveEverything(true,true,true)` (players + level data + chunks, flushed) then `store.create`, so no unload/autosave can tear a region. Progress -> action bar.
+- Commands (`/savepoint`, requires singleplayer owner or gamemaster): create [name], quick, list, info/revert/pin/unpin/delete <id>, rename <id> <name>, backup, status, config [key value].
+  `<id>` = full id, 4-hex short id, `latest`, name, or unique name prefix (quote names with spaces). Chat actions run these commands, so chunk 3 only needs `/savepoint revert <id>` to work.
+- Payloads (`SavepointPayloads`, ids `savepoint:<name>`): S2C `ListPayload(entries, usedBytes, budgetBytes, cooldownRemaining, backupRunning, backupDoneThisSession, settingValues in Settings.specs() order)`
+  with `Entry(id, shortId, name, kind, createdMillis, pinned, auto, logicalBytes, uniqueBytes, dimension)`; C2S `RequestListPayload`, `CreatePayload(name, quick)`, `DeletePayload(id)`,
+  `PinPayload(id,pinned)`, `RenamePayload(id,name)`, `BackupPayload`, `ConfigSetPayload(key,value)`. Every mutation re-sends the list to the requester. No thumbnails yet (chunk 4 adds a payload; `store.setThumbnail`).
+- Lang keys: `savepoint.msg.*` in en_us.json. Client side has NO listener for ListPayload yet (chunk 4 registers `ClientPlayNetworking`).
+- GameTest: `SavepointGameTests` via `./gradlew :fabric:runGameTest` (works here, dedicated test server; uses `SavepointService.startForTesting`). Not covered: commands/chat/networking in a live client.
+- Open: first create of a very large world blocks the server thread for seconds; kind SESSION unused (no automatic session savepoint yet).
