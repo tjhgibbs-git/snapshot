@@ -12,7 +12,8 @@ import java.util.function.Function;
 
 /**
  * Immutable user settings plus the key table (name, plain-English description, validation) the commands and
- * the future settings screen are both driven from. Persisting is a plain {@code .properties} file.
+ * the settings screen are both driven from. Specs flagged {@code perWorld} are stored with each world's store
+ * (see {@link WorldSettings}); the global file only holds their default. Persisting is a plain {@code .properties} file.
  */
 public record Settings(
         double storeBudgetGb, int keepNewest, int cooldownSeconds, FullBackupMode fullBackupMode, int fullBackupKeep) {
@@ -27,7 +28,11 @@ public record Settings(
 
     /** One configurable key. {@code get} renders the value, {@code set} returns a new Settings or throws IllegalArgumentException. */
     public record Spec(String key, String description, String valueHint, Function<Settings, String> get,
-                       BiFunction<Settings, String, Settings> set) {}
+                       BiFunction<Settings, String, Settings> set, boolean perWorld) {
+        public Spec(String key, String description, String valueHint, Function<Settings, String> get, BiFunction<Settings, String, Settings> set) {
+            this(key, description, valueHint, get, set, false);
+        }
+    }
 
     private static final List<Spec> SPECS = List.of(
             new Spec("storeBudgetGb",
@@ -51,10 +56,11 @@ public record Settings(
                     s -> s.fullBackupMode.name(),
                     (s, v) -> new Settings(s.storeBudgetGb, s.keepNewest, s.cooldownSeconds, parseMode(v), s.fullBackupKeep)),
             new Spec("fullBackupKeep",
-                    "How many full backup zips to keep; older ones are deleted.",
+                    "How many full backup zips to keep for this world; older ones are deleted. The config file holds the default for worlds that have no setting of their own.",
                     "1 - 100",
                     s -> Integer.toString(s.fullBackupKeep),
-                    (s, v) -> new Settings(s.storeBudgetGb, s.keepNewest, s.cooldownSeconds, s.fullBackupMode, parseInt(v, 1, 100))));
+                    (s, v) -> new Settings(s.storeBudgetGb, s.keepNewest, s.cooldownSeconds, s.fullBackupMode, parseInt(v, 1, 100)),
+                    true));
 
     public static List<Spec> specs() {
         return SPECS;

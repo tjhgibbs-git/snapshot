@@ -11,6 +11,11 @@ final class SavepointNetworking {
     static void register() {
         PayloadTypeRegistry.clientboundPlay().register(SavepointPayloads.ListPayload.TYPE, SavepointPayloads.ListPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(SavepointPayloads.BeginRevertPayload.TYPE, SavepointPayloads.BeginRevertPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SavepointPayloads.CreatedPayload.TYPE, SavepointPayloads.CreatedPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SavepointPayloads.ThumbnailPayload.TYPE, SavepointPayloads.ThumbnailPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.RevertPayload.TYPE, SavepointPayloads.RevertPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.ThumbnailUploadPayload.TYPE, SavepointPayloads.ThumbnailUploadPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.RequestThumbnailPayload.TYPE, SavepointPayloads.RequestThumbnailPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.RequestListPayload.TYPE, SavepointPayloads.RequestListPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.CreatePayload.TYPE, SavepointPayloads.CreatePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.DeletePayload.TYPE, SavepointPayloads.DeletePayload.CODEC);
@@ -31,6 +36,12 @@ final class SavepointNetworking {
                 (p, ctx) -> withService(ctx.player(), svc -> svc.pin(ctx.player(), p.id(), p.pinned())));
         ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.RenamePayload.TYPE,
                 (p, ctx) -> withService(ctx.player(), svc -> svc.rename(ctx.player(), p.id(), p.name())));
+        ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.RevertPayload.TYPE,
+                (p, ctx) -> withService(ctx.player(), svc -> svc.revert(ctx.player(), p.id())));
+        ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.ThumbnailUploadPayload.TYPE,
+                (p, ctx) -> withService(ctx.player(), svc -> svc.uploadThumbnail(ctx.player(), p.id(), p.png())));
+        ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.RequestThumbnailPayload.TYPE,
+                (p, ctx) -> withService(ctx.player(), svc -> svc.sendThumbnail(ctx.player(), p.id())));
         ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.BackupPayload.TYPE,
                 (p, ctx) -> withService(ctx.player(), svc -> svc.backup(ctx.player())));
         ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.ConfigSetPayload.TYPE,

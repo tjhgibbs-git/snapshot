@@ -28,7 +28,7 @@ final class RevertFlow {
         if (!svc.checkCooldown(p)) return;
         Manifest undo;
         try {
-            undo = svc.createUndoPoint(p);
+            undo = svc.createUndoPoint(p, target.name());
         } catch (IOException | RuntimeException e) {
             SavepointMod.LOG.error("Revert aborted: undo point failed", e);
             p.sendSystemMessage(Component.translatable("savepoint.msg.revert_undo_failed", String.valueOf(e.getMessage())).withStyle(ChatFormatting.RED));

@@ -51,7 +51,9 @@
   "savepoint.msg.status_unlimited": "Savepoints use %s (no limit), %4$s savepoint(s).",
   "savepoint.msg.config_header": "Savepoint settings (change with /savepoint config <key> <value>):",
   "savepoint.msg.config_line": "%s = %s - %s",
+  "savepoint.msg.config_line_world": "%s = %s (this world) - %s",
   "savepoint.msg.config_set": "Set %s to %s.",
+  "savepoint.msg.config_set_world": "Set %s to %s for this world.",
   "savepoint.msg.config_bad": "Cannot set %s: %s",
 
   "savepoint.msg.revert_owner_only": "Only the world owner (the host) can revert.",

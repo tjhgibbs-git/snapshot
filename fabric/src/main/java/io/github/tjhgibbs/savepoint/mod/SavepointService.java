@@ -8,6 +8,7 @@ import io.github.tjhgibbs.savepoint.core.OperationControl;
 import io.github.tjhgibbs.savepoint.core.SavepointMeta;
 import io.github.tjhgibbs.savepoint.core.SavepointStore;
 import io.github.tjhgibbs.savepoint.core.Settings;
+import io.github.tjhgibbs.savepoint.core.WorldSettings;
 import io.github.tjhgibbs.savepoint.core.ZipBackup;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -63,6 +65,14 @@ public final class SavepointService {
         t.setDaemon(true);
         return t;
     });
+    /** Lists and thumbnail reads: must keep working while {@link #worker} is busy writing a full backup zip. */
+    private final ExecutorService listWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Savepoint-list");
+        t.setDaemon(true);
+        return t;
+    });
+    /** Last per-savepoint unique sizes; reused while a zip holds the store lock (computing them would wait for it). */
+    private volatile Map<String, Long> lastUnique = Map.of();
     private final AtomicBoolean backupRunning = new AtomicBoolean();
     private final AtomicBoolean stopping = new AtomicBoolean();
     private volatile boolean backupDoneThisSession;
@@ -112,6 +122,7 @@ public final class SavepointService {
         if (s == null) return;
         s.stopping.set(true);
         s.worker.shutdown();
+        s.listWorker.shutdownNow();
         try {
             if (!s.worker.awaitTermination(10, TimeUnit.SECONDS)) s.worker.shutdownNow();
         } catch (InterruptedException e) {
@@ -164,8 +175,9 @@ public final class SavepointService {
         return server;
     }
 
+    /** Settings in effect for this world: the global ones, with the per-world values (full backup count) applied. */
     public Settings settings() {
-        return SavepointConfig.get();
+        return WorldSettings.effective(SavepointConfig.get(), storeRoot);
     }
 
     /** Seconds the player must still wait before create/revert; 0 = go. Does not start the timer. */
@@ -219,8 +231,9 @@ public final class SavepointService {
      * Automatic "before revert" point for chunk 3: no cooldown, no chat, flagged auto. Server thread.
      * @throws IOException if saving or capturing failed (caller must then abort the revert)
      */
-    public Manifest createUndoPoint(ServerPlayer p) throws IOException {
-        Manifest m = capture(p, SavepointMeta.of(Kind.UNDO, "Before revert"), false);
+    public Manifest createUndoPoint(ServerPlayer p, String targetName) throws IOException {
+        String label = targetName == null || targetName.isBlank() ? "Before revert" : "Before revert \u2192 " + targetName;
+        Manifest m = capture(p, SavepointMeta.of(Kind.UNDO, label.length() > 120 ? label.substring(0, 119) + "\u2026" : label), false);
         pruneQuietly();
         return m;
     }
@@ -265,6 +278,9 @@ public final class SavepointService {
         long ms = (System.nanoTime() - t0) / 1_000_000;
         SavepointMod.LOG.info("Savepoint {} created in {} ms", m.id(), ms);
         p.sendSystemMessage(createdLine(m));
+        if (ServerPlayNetworking.canSend(p, SavepointPayloads.CreatedPayload.TYPE)) {
+            ServerPlayNetworking.send(p, new SavepointPayloads.CreatedPayload(m.id(), m.name(), m.kind().json(), ms));
+        }
         int pruned = pruneQuietly();
         if (pruned > 0) p.sendSystemMessage(Component.translatable("savepoint.msg.pruned", pruned));
         afterCreate(p);
@@ -448,16 +464,25 @@ public final class SavepointService {
         p.sendSystemMessage(Component.translatable("savepoint.msg.config_header"));
         Settings s = settings();
         for (Settings.Spec sp : Settings.specs()) {
-            p.sendSystemMessage(Component.translatable("savepoint.msg.config_line", sp.key(), sp.get().apply(s), sp.description()));
+            p.sendSystemMessage(Component.translatable(sp.perWorld() ? "savepoint.msg.config_line_world" : "savepoint.msg.config_line",
+                    sp.key(), sp.get().apply(s), sp.description()));
         }
     }
 
     public void setConfig(ServerPlayer p, String key, String value) {
         try {
-            Settings n = settings().with(key, value);
-            SavepointConfig.set(n);
-            p.sendSystemMessage(Component.translatable("savepoint.msg.config_set", key, n.get(key)));
+            Settings.Spec sp = Settings.spec(key);
+            if (sp != null && sp.perWorld()) {
+                WorldSettings.set(storeRoot, key, value);
+                p.sendSystemMessage(Component.translatable("savepoint.msg.config_set_world", sp.key(), settings().get(key)));
+            } else {
+                Settings n = SavepointConfig.get().with(key, value);
+                SavepointConfig.set(n);
+                p.sendSystemMessage(Component.translatable("savepoint.msg.config_set", key, n.get(key)));
+            }
             sendList(p);
+        } catch (IOException e) {
+            fail(p, e);
         } catch (IllegalArgumentException e) {
             p.sendSystemMessage(Component.translatable("savepoint.msg.config_bad", key, e.getMessage()).withStyle(ChatFormatting.RED));
         }
@@ -529,7 +554,7 @@ public final class SavepointService {
     public void sendList(ServerPlayer p) {
         if (stopping.get()) return;
         try {
-            worker.execute(() -> {
+            listWorker.execute(() -> {
                 SavepointPayloads.ListPayload payload;
                 try {
                     payload = buildListPayload();
@@ -538,8 +563,8 @@ public final class SavepointService {
                     return;
                 }
                 server.execute(() -> {
-                    if (net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(p, SavepointPayloads.ListPayload.TYPE)) {
-                        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p, payload);
+                    if (ServerPlayNetworking.canSend(p, SavepointPayloads.ListPayload.TYPE)) {
+                        ServerPlayNetworking.send(p, payload);
                     }
                 });
             });
@@ -551,7 +576,7 @@ public final class SavepointService {
     /** Any thread. */
     public SavepointPayloads.ListPayload buildListPayload() throws IOException {
         List<Manifest> all = store.list();
-        Map<String, Long> unique = store.uniqueBytes();
+        Map<String, Long> unique = backupRunning.get() ? lastUnique : (lastUnique = store.uniqueBytes());
         List<SavepointPayloads.Entry> es = new ArrayList<>();
         for (Manifest m : all) {
             if (es.size() >= SavepointPayloads.MAX_ENTRIES) break;
@@ -561,7 +586,59 @@ public final class SavepointService {
         List<String> vals = new ArrayList<>();
         for (Settings.Spec sp : Settings.specs()) vals.add(sp.get().apply(s));
         return new SavepointPayloads.ListPayload(es, store.usage().total(), s.storeBudgetBytes(), cooldownRemaining(),
-                backupRunning.get(), backupDoneThisSession, vals);
+                backupRunning.get(), backupDoneThisSession, vals, worldDir.getFileName().toString());
+    }
+
+    // ------------------------------------------------------------------ thumbnails
+
+    /** How long after creation a client may still attach a screenshot. */
+    private static final long THUMBNAIL_WINDOW_MS = 120_000;
+
+    /** Attaches a client screenshot to a just-created savepoint that has none. Ignores anything else (quietly: it is cosmetic). */
+    public void uploadThumbnail(ServerPlayer p, String id, byte[] png) {
+        if (png.length == 0 || png.length > SavepointPayloads.MAX_THUMBNAIL || !isPng(png)) return;
+        Manifest m = store.get(id).orElse(null);
+        if (m == null || m.thumbnail() != null || System.currentTimeMillis() - m.createdMillis() > THUMBNAIL_WINDOW_MS) return;
+        try {
+            // On the main worker so it queues behind a running zip instead of being dropped (EVERY mode starts one right after create).
+            worker.execute(() -> {
+                try {
+                    store.setThumbnail(id, png);
+                } catch (IOException | RuntimeException e) {
+                    SavepointMod.LOG.warn("Could not store thumbnail for {}: {}", id, e.toString());
+                    return;
+                }
+                if (!stopping.get()) server.execute(() -> sendList(p));
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // shutting down
+        }
+    }
+
+    /** Sends the thumbnail PNG of one savepoint, if it has one. */
+    public void sendThumbnail(ServerPlayer p, String id) {
+        try {
+            listWorker.execute(() -> {
+                byte[] png;
+                try {
+                    png = store.readThumbnail(id).orElse(null);
+                } catch (IOException | RuntimeException e) {
+                    return;
+                }
+                if (png == null || png.length > SavepointPayloads.MAX_THUMBNAIL) return;
+                server.execute(() -> {
+                    if (ServerPlayNetworking.canSend(p, SavepointPayloads.ThumbnailPayload.TYPE)) {
+                        ServerPlayNetworking.send(p, new SavepointPayloads.ThumbnailPayload(id, png));
+                    }
+                });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // shutting down
+        }
+    }
+
+    private static boolean isPng(byte[] b) {
+        return b.length > 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G';
     }
 
     // ------------------------------------------------------------------ chat helpers
@@ -581,7 +658,8 @@ public final class SavepointService {
     private static Component flags(Manifest m) {
         List<String> f = new ArrayList<>();
         if (m.pinned()) f.add("pinned");
-        if (m.auto()) f.add("auto");
+        if (m.kind() == Kind.UNDO) f.add("undo point");
+        else if (m.auto()) f.add("auto");
         if (m.kind() == Kind.QUICK) f.add("quick");
         return Component.literal(String.join(", ", f));
     }
