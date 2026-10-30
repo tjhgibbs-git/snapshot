@@ -1,0 +1,68 @@
+# Savepoint: plan
+
+Fabric mod for Minecraft 26.3. Take a savepoint of a singleplayer world, playtest, revert in one click.
+Repo layout, versions and build setup copy `tjhgibbs-git/tree-generator-fabric` (reference checkout:
+`/tmp/claude-1000/ref/tree-generator-fabric` if still present, else `gh repo clone tjhgibbs-git/tree-generator-fabric`).
+UI is reviewed in-game with `tjhgibbs-git/block-scraper` (`~/claude-projects-wsl/block-scraper`).
+Mod id `savepoint`, command `/savepoint` (NOT `/snapshot`: WorldEdit owns that). Branch: `26.3`.
+Java 25, Loom `net.fabricmc.fabric-loom`, JDK at `~/.local/jdk/jdk-25.0.5+8`.
+
+## Decisions (confirmed with the user)
+- Scope: singleplayer + LAN host only (integrated server). No dedicated-server support.
+- Revert = automatic world reload: save, disconnect, restore files, reopen the same world. Not in-place.
+- Revert always restores the player too (playerdata is part of the snapshot).
+- Disk: auto-prune oldest *unpinned* savepoints when the store exceeds a budget (default 10 GB), never
+  pruning pinned ones nor the newest 3. Budget, keep-newest and everything below must be easy to
+  change in a settings screen with plain-English descriptions and a live "using X of Y GB" readout.
+- Full backup (independent zip of the whole world) mode setting: **Off / Once per session (default) /
+  Every savepoint**. After creating a savepoint, if no backup exists for this session (mode != Every),
+  offer in chat a clickable "[Save full backup]". Plus a manual button. Keep last N zips (default 3).
+  Zips are built from a savepoint manifest on a background thread (consistent, no gameplay impact).
+- Cooldown (default 10 s, configurable, 0 = off) between savepoint creations and between reverts.
+- Safety: every revert first takes an automatic "before revert" undo savepoint (flagged auto, prunable,
+  but the latest is always kept).
+- Quick keys: one for "Quick savepoint" (overwrites the single `quick` slot) and one for "Quick revert";
+  and a key that opens the main screen. Pick defaults nothing in the pack uses (check Axiom/WorldEdit/etc.).
+
+## Storage design
+Store at `<gameDir>/savepoints/<worldFolderName>/`:
+- `blobs/ab/abcdef...` content-addressed (SHA-256) opaque bytes; chunk payloads and whole small files.
+- `manifests/<id>.json` per savepoint: name, note, created, pinned, auto, dimension+pos of player,
+  and entries: world-relative path -> either whole-file blob hash, or for `*.mca` a table of
+  chunk index -> {timestamp, hash, size, compression byte}. `.mcc` oversized chunk files = whole-file blobs.
+- Everything under the world folder is captured except `session.lock`, so it is layout-agnostic
+  (26.x uses `dimensions/<ns>/<dim>/region|entities|poi`).
+- Snapshot: server `saveAllChunks(flush)` first. Chunks whose region-header timestamp+length match the
+  previous manifest and are older than (now - 2 s) reuse the old hash without reading. Others are read
+  raw (no recompression) and hashed. Hash I/O may run off-thread, but file reads happen while saving is
+  disabled / on a quiesced state so nothing is torn.
+- Revert: world is closed. Diff target manifest vs current files (current manifest taken as the undo
+  point), rewrite only regions that differ using our own .mca writer, restore other files, delete
+  files that did not exist at snapshot time. Verify blob hash on every read; refuse corrupt blobs.
+- GC: delete blobs unreferenced by any manifest after delete/prune.
+- Also store a thumbnail PNG per savepoint (client screenshot), shown in the UI.
+
+## Chunks (each ends with a commit; later chunks start from a fresh context reading this file)
+0. **Scaffold**: gradle (copy reference), fabric.mod.json, empty entrypoints, block-scraper wiring,
+   `./gradlew build` green, .gitignore, README stub. Rename nothing from sylvan except by deliberate port.
+1. **Core store** (`core/`, pure Java, no net.minecraft): mca reader/writer, blob store, manifests,
+   snapshot/diff/restore/prune/GC, zip backup builder. JUnit tests on synthetic worlds AND a copy of a real
+   world (`.../instances/26.3/minecraft/saves/Mods Demo World`; copy it, never touch the original).
+   Tests: round-trip byte-for-byte restore, dedup (2nd identical snapshot adds ~0 bytes), corruption
+   detection, prune rules, perf budget on a larger synthetic world.
+2. **Server integration + commands**: config (`config/savepoint.properties`), cooldown, create/list/
+   rename/pin/delete/backup commands, background execution, chat messages with clickable actions, the
+   full-backup offer. Gametest where feasible.
+3. **Revert flow**: server stop -> restore -> reopen world from the client (`/savepoint revert`, undo
+   point first, progress screen, errors leave the world untouched). Verify with block-scraper that loot
+   chests re-seal, killed mobs return, inventory/position restore.
+4. **UI**: main screen (list with thumbnails, size, age, pin; Create / Revert / Delete / Backup buttons;
+   confirm on revert; store usage bar), settings screen, HUD toast "Savepoint saved", keybinds.
+   Port visual style/widgets from the Sylvan client package. Review with block-scraper at several sizes.
+5. **Verify + ship**: end-to-end in a running client, perf numbers on a big world, README + docs/HANDOFF.md,
+   build jar, copy `build/libs/savepoint-*.jar` to the Prism mods folder (replace older savepoint jars only),
+   check no mixin/key/command clashes with the other mods there.
+
+## Progress
+(update this list at the end of every chunk)
+- [ ] 0  - [ ] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
