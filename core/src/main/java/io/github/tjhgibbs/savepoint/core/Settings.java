@@ -56,7 +56,7 @@ public record Settings(
                     s -> s.fullBackupMode.name(),
                     (s, v) -> new Settings(s.storeBudgetGb, s.keepNewest, s.cooldownSeconds, parseMode(v), s.fullBackupKeep)),
             new Spec("fullBackupKeep",
-                    "How many full backup zips to keep for this world; older ones are deleted. The config file holds the default for worlds that have no setting of their own.",
+                    "How many full backup zips to keep per world; older ones are deleted. Each world can override this in the in-game settings screen.",
                     "1 - 100",
                     s -> Integer.toString(s.fullBackupKeep),
                     (s, v) -> new Settings(s.storeBudgetGb, s.keepNewest, s.cooldownSeconds, s.fullBackupMode, parseInt(v, 1, 100)),

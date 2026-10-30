@@ -50,8 +50,9 @@ public final class WorldSettings {
 
     /** Drops a per-world value so the world follows the global one again. */
     public static void clear(Path storeRoot, String key) throws IOException {
+        Settings.Spec sp = Settings.spec(key);
         Properties p = read(storeRoot);
-        if (p.remove(key) != null) write(storeRoot, p);
+        if (p.remove(sp != null ? sp.key() : key) != null) write(storeRoot, p);
     }
 
     private static Properties read(Path storeRoot) {

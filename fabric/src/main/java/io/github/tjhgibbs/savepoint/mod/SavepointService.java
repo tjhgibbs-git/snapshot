@@ -71,8 +71,9 @@ public final class SavepointService {
         t.setDaemon(true);
         return t;
     });
-    /** Last per-savepoint unique sizes; reused while a zip holds the store lock (computing them would wait for it). */
-    private volatile Map<String, Long> lastUnique = Map.of();
+    /** Effective settings, cached so the tick thread does not re-read the per-world file; see {@link #settings()}. */
+    private volatile Settings cachedSettings;
+    private volatile Settings cachedBase;
     private final AtomicBoolean backupRunning = new AtomicBoolean();
     private final AtomicBoolean stopping = new AtomicBoolean();
     private volatile boolean backupDoneThisSession;
@@ -179,7 +180,14 @@ public final class SavepointService {
 
     /** Settings in effect for this world: the global ones, with the per-world values (full backup count) applied. */
     public Settings settings() {
-        return WorldSettings.effective(SavepointConfig.get(), storeRoot);
+        Settings base = SavepointConfig.get();
+        Settings s = cachedSettings;
+        if (s == null || base != cachedBase) {
+            s = WorldSettings.effective(base, storeRoot);
+            cachedBase = base;
+            cachedSettings = s;
+        }
+        return s;
     }
 
     /** Seconds the player must still wait before create/revert; 0 = go. Does not start the timer. */
@@ -234,8 +242,15 @@ public final class SavepointService {
      * @throws IOException if saving or capturing failed (caller must then abort the revert)
      */
     public Manifest createUndoPoint(ServerPlayer p, String targetName) throws IOException {
-        String label = targetName == null || targetName.isBlank() ? "Before revert" : "Before revert \u2192 " + targetName;
-        Manifest m = capture(p, SavepointMeta.of(Kind.UNDO, label.length() > 120 ? label.substring(0, 119) + "\u2026" : label), false);
+        String prefix = "Before revert \u2192 ";
+        String target = targetName == null ? "" : targetName;
+        while (target.startsWith(prefix)) target = target.substring(prefix.length()); // reverting to an undo point: no nesting
+        String label = target.isBlank() ? "Before revert" : prefix + target;
+        if (label.length() > 120) {
+            int cut = Character.isHighSurrogate(label.charAt(118)) ? 118 : 119;
+            label = label.substring(0, cut) + "\u2026";
+        }
+        Manifest m = capture(p, SavepointMeta.of(Kind.UNDO, label), false);
         pruneQuietly();
         return m;
     }
@@ -474,21 +489,49 @@ public final class SavepointService {
     }
 
     public void setConfig(ServerPlayer p, String key, String value) {
+        setConfig(p, key, value, true);
+    }
+
+    /** {@code announce} false: the settings screen shows the new value itself, so no chat line per slider step. */
+    public void setConfig(ServerPlayer p, String key, String value, boolean announce) {
         try {
             Settings.Spec sp = Settings.spec(key);
             if (sp != null && sp.perWorld()) {
-                WorldSettings.set(storeRoot, key, value);
-                p.sendSystemMessage(Component.translatable("savepoint.msg.config_set_world", sp.key(), settings().get(key)));
+                setWorldSetting(key, value);
+                if (announce) p.sendSystemMessage(Component.translatable("savepoint.msg.config_set_world", sp.key(), settings().get(key)));
             } else {
                 Settings n = SavepointConfig.get().with(key, value);
                 SavepointConfig.set(n);
-                p.sendSystemMessage(Component.translatable("savepoint.msg.config_set", key, n.get(key)));
+                if (announce) p.sendSystemMessage(Component.translatable("savepoint.msg.config_set", key, n.get(key)));
             }
             sendList(p);
         } catch (IOException e) {
             fail(p, e);
         } catch (IllegalArgumentException e) {
             p.sendSystemMessage(Component.translatable("savepoint.msg.config_bad", key, e.getMessage()).withStyle(ChatFormatting.RED));
+        }
+    }
+
+    /** Writes a per-world setting to this world's store and makes it take effect (cache, zip retention). */
+    public void setWorldSetting(String key, String value) throws IOException {
+        WorldSettings.set(storeRoot, key, value);
+        cachedSettings = null;
+        Settings.Spec sp = Settings.spec(key);
+        if (sp != null && sp.key().equals("fullBackupKeep")) retainBackupsLater();
+    }
+
+    /** Applies a lowered full-backup count now instead of at the next backup. Queued behind a running zip. */
+    private void retainBackupsLater() {
+        try {
+            worker.execute(() -> {
+                try {
+                    ZipBackup.retain(backupDir, settings().fullBackupKeep());
+                } catch (IOException | RuntimeException e) {
+                    SavepointMod.LOG.warn("Could not prune old full backups", e);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // shutting down
         }
     }
 
@@ -580,7 +623,7 @@ public final class SavepointService {
     /** Any thread. */
     public SavepointPayloads.ListPayload buildListPayload() throws IOException {
         List<Manifest> all = store.list();
-        Map<String, Long> unique = backupRunning.get() ? lastUnique : (lastUnique = store.uniqueBytes());
+        Map<String, Long> unique = store.uniqueBytes();
         List<SavepointPayloads.Entry> es = new ArrayList<>();
         for (Manifest m : all) {
             if (es.size() >= SavepointPayloads.MAX_ENTRIES) break;
@@ -607,6 +650,9 @@ public final class SavepointService {
             // On the main worker so it queues behind a running zip instead of being dropped (EVERY mode starts one right after create).
             worker.execute(() -> {
                 try {
+                    // Checked again here: an earlier queued upload for the same savepoint may have won.
+                    Manifest now = store.get(id).orElse(null);
+                    if (now == null || now.thumbnail() != null) return;
                     store.setThumbnail(id, png);
                 } catch (IOException | RuntimeException e) {
                     SavepointMod.LOG.warn("Could not store thumbnail for {}: {}", id, e.toString());

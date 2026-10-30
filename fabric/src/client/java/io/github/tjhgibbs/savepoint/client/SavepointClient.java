@@ -32,6 +32,8 @@ public final class SavepointClient implements ClientModInitializer {
     static KeyMapping quickRevertKey;
 
     private Screen lastScreen;
+    /** The "how to use" chat line is shown at most once per game session. */
+    private static boolean hintShown;
 
     @Override
     public void onInitializeClient() {
@@ -40,7 +42,10 @@ public final class SavepointClient implements ClientModInitializer {
         quickSaveKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.savepoint.quick_save", InputConstants.Type.KEYBOARD, InputConstants.KEY_F7, CATEGORY));
         quickRevertKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.savepoint.quick_revert", InputConstants.Type.KEYBOARD, InputConstants.KEY_F8, CATEGORY));
 
-        ClientPlayNetworking.registerGlobalReceiver(SavepointPayloads.ListPayload.TYPE, (p, ctx) -> ClientState.onList(p));
+        ClientPlayNetworking.registerGlobalReceiver(SavepointPayloads.ListPayload.TYPE, (p, ctx) -> {
+            ClientState.onList(p);
+            maybeShowKeyHint(ctx.client(), p);
+        });
         ClientPlayNetworking.registerGlobalReceiver(SavepointPayloads.ThumbnailPayload.TYPE, (p, ctx) -> Thumbs.onReceived(p));
         ClientPlayNetworking.registerGlobalReceiver(SavepointPayloads.CreatedPayload.TYPE, (p, ctx) -> {
             ClientState.onCreated(p.id());
@@ -126,6 +131,14 @@ public final class SavepointClient implements ClientModInitializer {
         } else {
             mc.setScreenAndShow(RevertConfirmScreen.create(null, quick, true));
         }
+    }
+
+    /** First world without savepoints this session: one chat line naming the keys, so players know the mod is there. */
+    private static void maybeShowKeyHint(Minecraft mc, SavepointPayloads.ListPayload p) {
+        if (hintShown || !p.entries().isEmpty() || RevertCoordinator.isActive()) return;
+        hintShown = true;
+        mc.gui.chatListener().handleSystemMessage(Component.translatable("savepoint.hint.keys", openKey.getTranslatedKeyMessage(),
+                quickSaveKey.getTranslatedKeyMessage(), quickRevertKey.getTranslatedKeyMessage()).withStyle(net.minecraft.ChatFormatting.GRAY), false);
     }
 
     static void toast(Minecraft mc, String title, String body) {

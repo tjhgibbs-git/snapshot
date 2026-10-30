@@ -45,7 +45,7 @@ final class SavepointNetworking {
         ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.BackupPayload.TYPE,
                 (p, ctx) -> withService(ctx.player(), svc -> svc.backup(ctx.player())));
         ServerPlayNetworking.registerGlobalReceiver(SavepointPayloads.ConfigSetPayload.TYPE,
-                (p, ctx) -> withService(ctx.player(), svc -> svc.setConfig(ctx.player(), p.key(), p.value())));
+                (p, ctx) -> withService(ctx.player(), svc -> svc.setConfig(ctx.player(), p.key(), p.value(), false)));
     }
 
     private static void withService(ServerPlayer player, java.util.function.Consumer<SavepointService> action) {

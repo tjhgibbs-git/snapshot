@@ -34,6 +34,10 @@ final class RevertConfirmScreen extends ConfirmScreen {
     static Screen create(Screen parent, Entry e, boolean viaQuickKey) {
         Component age = ClientFmt.age(System.currentTimeMillis() - e.createdMillis());
         Component body = Component.translatable("savepoint.revert.confirm.body", age);
+        var server = Minecraft.getInstance().getSingleplayerServer();
+        if (server != null && server.isPublished()) {
+            body = Component.empty().append(body).append("\n\n").append(Component.translatable("savepoint.revert.confirm.lan").withStyle(ChatFormatting.YELLOW));
+        }
         if (viaQuickKey) {
             body = Component.empty().append(body).append("\n\n").append(
                     Component.translatable("savepoint.revert.confirm.key_hint", SavepointClient.quickRevertKey.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));

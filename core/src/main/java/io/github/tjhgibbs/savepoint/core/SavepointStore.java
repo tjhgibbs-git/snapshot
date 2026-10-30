@@ -52,10 +52,10 @@ import java.util.stream.Stream;
  * whole-file blob. Identical content is stored once across all savepoints.
  *
  * <h2>Thread-safety</h2>
- * Mutating and heavy operations (create, restore, verify, gc, prune, delete, setThumbnail, uniqueBytes,
+ * Mutating and heavy operations (create, restore, verify, gc, prune, delete, setThumbnail,
  * buildFullBackup) are serialised by one internal lock and run on the <b>calling</b> thread (they may use
  * short-lived worker threads internally for hashing/IO). Cheap metadata operations (rename, setNote, pin)
- * use a separate short lock, and {@link #list()}, {@link #get}, {@link #usage()} are lock-free reads of
+ * use a separate short lock, and {@link #list()}, {@link #get}, {@link #usage()}, {@link #uniqueBytes()} are lock-free reads of
  * immutable manifests, so a UI thread can call them while a background create runs. Callers must make sure
  * the world files are quiescent (saved, saving disabled) while create runs and closed while restore runs.
  * {@link OperationControl} callbacks are invoked on the calling thread only.
@@ -436,29 +436,28 @@ public final class SavepointStore {
         return new StoreUsage(b, mb, sizes.size(), mc);
     }
 
-    /** Per-savepoint "unique bytes": blobs that only that savepoint references, i.e. what deleting it would free. */
+    /**
+     * Per-savepoint "unique bytes": blobs that only that savepoint references, i.e. what deleting it would free.
+     * Lock-free like {@link #usage()}, so a UI never waits behind a long zip; while another operation is mid-way the
+     * numbers may be momentarily off by that operation's blobs.
+     */
     public Map<String, Long> uniqueBytes() throws IOException {
-        opLock.lock();
-        try {
-            List<Manifest> all = listStrict();
-            Map<String, Long> sizes = blobs.scan();
-            Map<String, Integer> refs = new HashMap<>();
-            Map<String, Set<String>> per = new HashMap<>();
-            for (Manifest m : all) {
-                Set<String> r = m.referencedBlobs();
-                per.put(m.id(), r);
-                for (String h : r) refs.merge(h, 1, Integer::sum);
-            }
-            Map<String, Long> out = new LinkedHashMap<>();
-            for (Manifest m : all) {
-                long t = 0;
-                for (String h : per.get(m.id())) if (refs.get(h) == 1) t += sizes.getOrDefault(h, 0L);
-                out.put(m.id(), t);
-            }
-            return out;
-        } finally {
-            opLock.unlock();
+        List<Manifest> all = list();
+        Map<String, Long> sizes = blobs.scan();
+        Map<String, Integer> refs = new HashMap<>();
+        Map<String, Set<String>> per = new HashMap<>();
+        for (Manifest m : all) {
+            Set<String> r = m.referencedBlobs();
+            per.put(m.id(), r);
+            for (String h : r) refs.merge(h, 1, Integer::sum);
         }
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (Manifest m : all) {
+            long t = 0;
+            for (String h : per.get(m.id())) if (refs.get(h) == 1) t += sizes.getOrDefault(h, 0L);
+            out.put(m.id(), t);
+        }
+        return out;
     }
 
     public long uniqueBytes(String id) throws IOException {

@@ -63,7 +63,9 @@ public final class RegionFile implements AutoCloseable {
                     r.slots[i] = new Slot(i, 0, 0, ts);
                     continue;
                 }
-                if (off < 2 || (long) (off + cnt) * SECTOR > size)
+                // The game does not pad the file's last sector, so only the chunk's start must lie inside the file;
+                // head() checks that its actual bytes do.
+                if (off < 2 || (long) off * SECTOR + 5 > size)
                     throw new MalformedRegionException("bad location for chunk " + i + " in " + file);
                 r.slots[i] = new Slot(i, off, cnt, ts);
                 r.present++;
@@ -89,7 +91,7 @@ public final class RegionFile implements AutoCloseable {
         b.flip();
         int len = b.getInt();
         int comp = b.get() & 0xFF;
-        if (len < 1 || len > s.sectorCount() * SECTOR - 4)
+        if (len < 1 || len > s.sectorCount() * SECTOR - 4 || (long) s.sectorOffset() * SECTOR + 4 + len > fileSize)
             throw new MalformedRegionException("bad chunk length " + len + " for chunk " + s.index());
         return new Head(len - 1, comp);
     }

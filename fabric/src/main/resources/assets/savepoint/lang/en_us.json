@@ -171,5 +171,7 @@
   "savepoint.setting.fullBackupMode.desc.session": "After your first savepoint of each play session, chat offers a button to also write a complete copy of the world as a zip file.",
   "savepoint.setting.fullBackupMode.desc.every": "Write a complete zip of the world in the background after every savepoint. Uses a lot of disk space.",
   "savepoint.setting.fullBackupKeep": "Full backups to keep",
-  "savepoint.setting.fullBackupKeep.desc": "How many full backup zips to keep for this world. Older zips are deleted. Zips are stored next to the savepoints and do not count towards the disk budget."
+  "savepoint.setting.fullBackupKeep.desc": "How many full backup zips to keep for this world. Older zips are deleted. Zips are stored next to the savepoints and do not count towards the disk budget.",
+  "savepoint.hint.keys": "Savepoint: %s opens your savepoints, %s takes a quick one, %s reverts to it. (Also on the pause menu.)",
+  "savepoint.revert.confirm.lan": "Your world is open to LAN: other players will be disconnected and need to rejoin."
 }

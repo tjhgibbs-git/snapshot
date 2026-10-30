@@ -24,7 +24,7 @@ public class SavepointGameTests {
             if (again.id().equals(m.id())) h.fail("ids must differ");
             if (!m.name().equals("Before revert \u2192 Target")) h.fail("undo point should name its target, got " + m.name());
             // Per-world setting: written to this world's store, not the global config.
-            io.github.tjhgibbs.savepoint.core.WorldSettings.set(root, "fullBackupKeep", "7");
+            svc.setWorldSetting("fullBackupKeep", "7");
             if (svc.settings().fullBackupKeep() != 7) h.fail("per-world fullBackupKeep not in effect");
             var payload = svc.buildListPayload();
             int idx = io.github.tjhgibbs.savepoint.core.Settings.specs().indexOf(io.github.tjhgibbs.savepoint.core.Settings.spec("fullBackupKeep"));

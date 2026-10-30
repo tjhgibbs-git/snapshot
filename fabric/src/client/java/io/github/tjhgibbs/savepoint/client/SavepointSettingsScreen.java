@@ -369,7 +369,7 @@ final class SavepointSettingsScreen extends Screen {
         }
         super.extractRenderState(g, mouseX, mouseY, partialTick);
         g.centeredText(font, title, width / 2, 8, 0xFFFFFFFF);
-        // live usage readout (the numbers move as budget / keep-newest changes prune old savepoints)
+        // live usage readout; a lower budget takes effect (prunes) at the next savepoint, never while dragging a slider
         UsageBar.draw(g, font, ClientState.list(), left, 22, contentW, contentW);
 
         g.enableScissor(0, viewTop, width, viewBottom);

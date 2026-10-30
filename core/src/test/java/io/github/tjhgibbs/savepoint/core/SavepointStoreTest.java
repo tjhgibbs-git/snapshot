@@ -365,6 +365,41 @@ class SavepointStoreTest {
         assertArrayEquals(new byte[] {1, 2, 3}, Files.readAllBytes(world.resolve("dimensions/minecraft/overworld/region/r.5.5.mca")));
     }
 
+    /** Minecraft 26.x does not pad the last sector; such files must still be read chunk by chunk. */
+    @Test
+    void unpaddedRegionIsReadAsChunks() throws Exception {
+        Path f = world.resolve(REGION);
+        List<Chunk> chunks = TestWorlds.readRegion(f);
+        long end = 0;
+        try (RegionFile rf = RegionFile.open(f)) {
+            for (int i = 0; i < RegionFile.CHUNKS; i++) {
+                RegionFile.Slot s = rf.slot(i);
+                if (s.present()) end = Math.max(end, (long) s.sectorOffset() * RegionFile.SECTOR + 5 + rf.head(s).length());
+            }
+        }
+        assertTrue(end % RegionFile.SECTOR != 0, "test needs a last chunk that ends mid-sector");
+        try (var ch = java.nio.channels.FileChannel.open(f, StandardOpenOption.WRITE)) {
+            ch.truncate(end);
+        }
+        assertEquals(chunks.size(), TestWorlds.readRegion(f).size());
+
+        // One byte less and the last chunk runs past the end of the file: that is still rejected.
+        Path cut = tmp.resolve("cut.mca");
+        Files.copy(f, cut);
+        try (var ch = java.nio.channels.FileChannel.open(cut, StandardOpenOption.WRITE)) {
+            ch.truncate(end - 1);
+        }
+        assertThrows(MalformedRegionException.class, () -> TestWorlds.readRegion(cut));
+
+        Manifest m = create(Kind.MANUAL, "a");
+        assertInstanceOf(Manifest.RegionEntry.class, m.entries().get(REGION));
+        var before = TestWorlds.fingerprint(world);
+        TestWorlds.replaceChunk(f, chunks.get(0).index(), new byte[100], 1_999_999_999);
+        store.restore(world, m.id());
+        assertEquals(before, TestWorlds.fingerprint(world));
+
+    }
+
     @Test
     void regionWriterProducesCompactValidFiles() throws Exception {
         Path f = tmp.resolve("r.0.0.mca");

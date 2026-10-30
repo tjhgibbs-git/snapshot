@@ -77,7 +77,7 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 
 ## Progress
 (update this list at the end of every chunk)
-- [x] 0  - [x] 1  - [x] 2  - [x] 3  - [x] 4  - [ ] 5 (review/polish)  - [ ] 6 (ship)
+- [x] 0  - [x] 1  - [x] 2  - [x] 3  - [x] 4  - [x] 5 (review/polish)  - [ ] 6 (ship)
 
 ## Notes for next chunk
 - Build: `export JAVA_HOME=~/.local/jdk/jdk-25.0.5+8 PATH=$JAVA_HOME/bin:$PATH; ./gradlew build` (~45 s warm).
@@ -174,3 +174,21 @@ Keys: K open, F7 quick save, F8 quick revert (checked against Axiom/WorldEdit/Sy
   (now once per world per game session); pinned quick showed "replaced by the next quick save"; detail thumbnail hid the text at large GUI scales.
 - Open for chunk 5: at GUI scale 3 / 720p the detail panel has no room for a thumbnail and drops the last line ("Deleting frees"); settings changes from
   the GUI also print a "Set key to value." chat line.
+
+## Notes for next chunk (from chunk 5: review + polish)
+- BIG FIX: 26.3 does not pad a region file's last sector, so `RegionFile.open` rejected every live region and they were stored as whole-file
+  blobs (no chunk dedup; ~950 KB per revert cycle on a tiny flat world). Now only the chunk's real bytes must be inside the file. Test
+  `unpaddedRegionIsReadAsChunks`. The Mods Demo World regions happen to be padded, which is why RealWorldTest never caught it.
+- Live soak (block-scraper, 10x place block + Shift+F8): every block reverted, store growth ~35 KB/cycle (chunks the game re-saved),
+  revert totals 2.5-3.7 s (stop ~0.4-0.9 s, restore ~20 ms, reopen ~2-3 s = vanilla world load). Core `SoakTest`: 20 cycles byte-identical,
+  repeated playtest adds only manifest bytes.
+- UX: one-time chat hint naming K/F7/F8 on a world with no savepoints; revert confirm warns when the world is open to LAN; GUI setting changes
+  no longer print a chat line (the command still does).
+- /code-review high fixes: `SavepointStore.uniqueBytes()` is now lock-free (lists no longer wait behind a zip; the service's stale cache is gone);
+  thumbnail upload rechecks on the worker; `settings()` cached (invalidated by `setWorldSetting` / a new global Settings); lowering
+  fullBackupKeep prunes zips immediately; undo labels no longer nest ("Before revert -> Before revert -> X") and cut surrogate-safe;
+  global config comment for fullBackupKeep reworded; `WorldSettings.clear` canonicalises the key.
+- Not done / not testable here: disk-full and Windows locked-file paths (no Windows box), LAN with a second player, very large world first-create
+  pause (first savepoint must hash everything; later ones only changed chunks), toasts (block-scraper hides them). Review finding left as-is:
+  WorldSettings/SavepointConfig duplicate a small properties load/apply loop.
+- `./gradlew build` now also runs the gametests (`runGameTest`).
