@@ -65,7 +65,7 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 
 ## Progress
 (update this list at the end of every chunk)
-- [x] 0  - [ ] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
+- [x] 0  - [x] 1  - [ ] 2  - [ ] 3  - [ ] 4  - [ ] 5
 
 ## Notes for next chunk
 - Build: `export JAVA_HOME=~/.local/jdk/jdk-25.0.5+8 PATH=$JAVA_HOME/bin:$PATH; ./gradlew build` (~45 s warm).
@@ -78,3 +78,26 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 - `-PcoreOnly` or env `SAVEPOINT_CORE_ONLY=1` builds core alone.
 - `unzip` is not installed; use `jar tf` to inspect jars. No Sylvan code was ported.
 - Gametests were not run (placeholder only); `./gradlew build` does not run them.
+
+## Notes for next chunk (from chunk 1: core store)
+All in `io.github.tjhgibbs.savepoint.core` (pure Java, release 21). Tests: `./gradlew -PcoreOnly :core:test` (add `-Pperf` for the ~1 GB test).
+Real-world test copies `.../saves/Mods Demo World` and is skipped if absent.
+- `SavepointStore(Path root[, Options])`; root = `<gameDir>/savepoints/<worldFolder>`. `Options.defaults().withClock(..).withIoThreads(n)`.
+  - `Manifest create(Path worldDir, SavepointMeta meta[, OperationControl])`; `SavepointMeta.of(Kind, name).withNote/withAuto/withPinned/withPlayer(PlayerPos)/withThumbnail(byte[] png)`
+    (UNDO kind defaults auto=true). Creating a QUICK replaces older unpinned QUICK savepoints.
+  - `List<Manifest> list()` (newest first, lock-free), `Optional<Manifest> get(id)`, `unreadableManifests()`
+  - `rename(id,name)`, `setNote(id,note)`, `pin(id,bool)`, `setThumbnail(id,png)`, `readThumbnail(id)` -> all return/handle `Manifest`
+  - `long delete(id)` (frees unreferenced blobs, returns bytes), `GcResult gc()`, `List<Manifest> prune(new PrunePolicy(maxBytes, keepNewest))` (maxBytes<=0 = unlimited; never pinned / newest N / newest UNDO)
+  - `RestoreReport restore(Path worldDir, id[, OperationControl])` (world must be closed; stages+verifies then moves; rolls back on failure; throws `CorruptBlobException`/`SavepointNotFoundException`/`OperationCancelledException`)
+  - `VerifyReport verify(id, ctl)`, `StoreUsage usage()` (blobBytes/manifestBytes/total()), `Map<String,Long> uniqueBytes()`, `long uniqueBytes(id)`
+  - `buildFullBackup(id, Path zipFile, String rootFolderName, ctl)`; `ZipBackup.fileName(manifest)` (`savepoint-<id>.zip`), `ZipBackup.retain(dir, keepN)`
+- `Manifest` (record: id,name,note,createdMillis,pinned,auto,kind,player,thumbnail,entries; `Kind` MANUAL/QUICK/UNDO/SESSION; `PlayerPos(dimension,x,y,z)`; `logicalBytes()`), JSON via `toJson()/fromJson()`.
+- `OperationControl` (progress(phase,done,total) bytes; isCancelled()) is called on the calling thread; ops run on the calling thread
+  (internal short-lived IO workers only). list/get/usage are safe from any thread while a create runs; other ops serialise on one lock.
+- Chunk-reuse shortcut rule differs slightly from the plan (stricter, correct): reuse needs same ts+len+compression AND chunk ts older than
+  (previous savepoint creation time - 2 s). Same rule applies in restore diffing. Caller must have saved/flushed the world before create.
+- `session.lock` is never captured, restored or deleted; a store nested inside the world dir is skipped automatically.
+- Malformed `.mca` falls back to whole-file blob; `.mcc` files are ordinary whole-file blobs, external-chunk stubs stay in the chunk table.
+- Timings (this box, WSL): ~937 MB synthetic world: create 4.3 s, unchanged re-create 0.1 s, restore of 1 region 0.12 s, zip 3.5 s, verify 0.8 s.
+  Real Mods Demo World (22 MB on disk, 2 MB payload): create 0.4 s, restore 0.03 s.
+- Fabric module not rebuilt in this chunk (only core touched).
