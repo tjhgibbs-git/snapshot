@@ -46,6 +46,15 @@ class ServiceLogicTest {
     }
 
     @Test
+    void undoAliasResolvesToNewestUndoPoint() {
+        Manifest undoNew = new Manifest("20261030-120000-0001", "Before revert", "", 0, false, true, Kind.UNDO, null, null, Map.of());
+        Manifest undoOld = new Manifest("20261030-110000-0002", "Before revert", "", 0, false, true, Kind.UNDO, null, null, Map.of());
+        List<Manifest> all = List.of(m("20261030-130000-aaaa", "Manual"), undoNew, undoOld);
+        assertEquals("0001", IdResolver.shortId(((IdResolver.Found) IdResolver.resolve(all, "undo")).manifest()));
+        assertInstanceOf(IdResolver.NotFound.class, IdResolver.resolve(List.of(m("20261030-130000-aaaa", "Manual")), "undo"));
+    }
+
+    @Test
     void settingsValidationAndRoundTrip() throws IOException {
         Settings s = Settings.DEFAULTS.with("storeBudgetGb", "2.5").with("fullBackupMode", "every").with("cooldownSeconds", "0");
         assertEquals(2.5, s.storeBudgetGb());

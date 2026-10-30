@@ -195,4 +195,30 @@ public final class SavepointPayloads {
             return TYPE;
         }
     }
+
+    /**
+     * S2C: the server has taken its undo point and is about to be stopped; the client must now disconnect, restore
+     * {@code targetId} from the store at {@code storeRoot} into {@code worldDir} and reopen {@code levelId}.
+     * Paths are absolute (client and integrated server share a machine).
+     */
+    public record BeginRevertPayload(String levelId, String worldDir, String storeRoot, String targetId, String targetName,
+                                     String undoId) implements CustomPacketPayload {
+        public static final Type<BeginRevertPayload> TYPE = typeOf("begin_revert");
+        public static final StreamCodec<FriendlyByteBuf, BeginRevertPayload> CODEC = StreamCodec.of(
+                (b, p) -> {
+                    b.writeUtf(p.levelId, MAX_STR);
+                    b.writeUtf(p.worldDir, 4096);
+                    b.writeUtf(p.storeRoot, 4096);
+                    b.writeUtf(p.targetId, MAX_STR);
+                    b.writeUtf(p.targetName, MAX_STR);
+                    b.writeUtf(p.undoId, MAX_STR);
+                },
+                b -> new BeginRevertPayload(b.readUtf(MAX_STR), b.readUtf(4096), b.readUtf(4096), b.readUtf(MAX_STR),
+                        b.readUtf(MAX_STR), b.readUtf(MAX_STR)));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
 }

@@ -59,13 +59,25 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 4. **UI**: main screen (list with thumbnails, size, age, pin; Create / Revert / Delete / Backup buttons;
    confirm on revert; store usage bar), settings screen, HUD toast "Savepoint saved", keybinds.
    Port visual style/widgets from the Sylvan client package. Review with block-scraper at several sizes.
-5. **Verify + ship**: end-to-end in a running client, perf numbers on a big world, README + docs/HANDOFF.md,
-   build jar, copy `build/libs/savepoint-*.jar` to the Prism mods folder (replace older savepoint jars only),
-   check no mixin/key/command clashes with the other mods there.
+4b. Start of chunk 4 also: make `fullBackupKeep` a PER-WORLD setting (stored with the world's store, e.g.
+   `<store>/settings.properties`, overriding the global default of 3); the settings screen edits the value
+   for the current world.
+5. **Functionality review + make it feel GREAT**: use the mod like a real playtester in a running client,
+   end to end, and fix everything clumsy. Checklist: first-run experience and discoverability (does the
+   player know the keys/commands?); time from key press to savepoint saved and to back in the world after
+   revert (measure; trim anything avoidable, e.g. reopen path, progress screen flicker, thumbnail cost);
+   feedback on every action (toasts/sounds/chat wording, cooldown messages); accidental-click safety (confirm
+   on revert, undo path obvious); error paths (disk full, corrupt blob, cancelled revert, locked file on
+   Windows, LAN players); large-world behaviour (server pause on first savepoint); store size honesty in the
+   UI; settings clarity; UI at several window sizes/GUI scales/languages; clash check with all mods in the
+   Prism mods folder; run a multi-cycle soak (create/mutate/revert x20, check store growth is ~0 and the
+   world is byte-identical to the savepoint each time). Run /code-review on the diff. Fix, commit.
+6. **Ship**: README + docs/HANDOFF.md, build jar, copy `fabric/build/libs/savepoint-*.jar` to the Prism
+   mods folder (replace older savepoint jars only), final sanity launch.
 
 ## Progress
 (update this list at the end of every chunk)
-- [x] 0  - [x] 1  - [x] 2  - [ ] 3  - [ ] 4  - [ ] 5
+- [x] 0  - [x] 1  - [x] 2  - [x] 3  - [ ] 4  - [ ] 5 (review/polish)  - [ ] 6 (ship)
 
 ## Notes for next chunk
 - Build: `export JAVA_HOME=~/.local/jdk/jdk-25.0.5+8 PATH=$JAVA_HOME/bin:$PATH; ./gradlew build` (~45 s warm).
@@ -122,3 +134,28 @@ Fabric main package `io.github.tjhgibbs.savepoint.mod`. Core additions: `core.Se
 - Lang keys: `savepoint.msg.*` in en_us.json. Client side has NO listener for ListPayload yet (chunk 4 registers `ClientPlayNetworking`).
 - GameTest: `SavepointGameTests` via `./gradlew :fabric:runGameTest` (works here, dedicated test server; uses `SavepointService.startForTesting`). Not covered: commands/chat/networking in a live client.
 - Open: first create of a very large world blocks the server thread for seconds; kind SESSION unused (no automatic session savepoint yet).
+
+## Notes for next chunk (from chunk 3: revert flow)
+Verified LIVE with block-scraper on a flat creative world (typed `/savepoint ...` in the real chat): loot chest re-sealed (LootTable back), killed villager back,
+placed/broken blocks reverted, inventory (7 diamonds), player position, and world time (day 6000 vs 18000) all restored; `revert undo` round-trips; a corrupted
+blob made the restore fail, world reopened untouched with a red chat line + toast; Cancel on the progress screen works; cooldown message shows after a create.
+Timings (tiny flat world, llvmpipe, idle-tick): command -> server stopped ~0.6-0.9 s, restore 60 ms, reopen -> rejoined ~3.3-4.3 s, total ~4.0-5.3 s.
+- Flow: `/savepoint revert <id|latest|undo|name>` -> `SavepointService.revert` -> `RevertFlow.begin` (mod pkg, server thread; owner-only, cooldown check, `createUndoPoint`
+  (abort on failure), re-check target not pruned, `markCooldown`, chat line, S2C `BeginRevertPayload(levelId, worldDir, storeRoot, targetId, targetName, undoId)`) ->
+  client `RevertCoordinator` (src/client, tick-driven state machine DISCONNECT -> RESTORE (worker thread, `RevertProgressScreen`) -> REOPEN (`openWorld(levelId)`) -> AWAIT_JOIN ->
+  chat `Reverted to "X". Undo with /savepoint revert undo [Undo]` + toast). Restore failure/cancel: world is reopened anyway, red chat line + toast; if the reopen itself fails an
+  `AlertScreen` explains. `RevertCoordinator.isActive()` lets UI disable buttons. Chunk 4 UI must trigger a revert by sending the command `/savepoint revert <fullId>` (or a
+  C2S payload that calls `svc.revert(p, id)`); never call the coordinator directly.
+- `undo` alias lives in `core.IdResolver` (newest `Kind.UNDO`). `SavepointService.storeRoot()` added; the cooldown timer is now STATIC so it survives the server restart.
+- Dev knob: `-Dsavepoint.debugRestoreDelayMs=N` slows restore progress callbacks (to inspect the progress screen). Start the client with `JAVA_TOOL_OPTIONS=...`.
+- block-scraper quirks (not our bug): `block-scraper command` keeps the ORIGINAL integrated server, so after a revert it hits a dead server; use typed chat
+  (`key slash`, `type ...`, `key enter`) instead. `command` has no player entity so `/savepoint` is "unknown" there; `execute as @p run savepoint` also fails
+  ("Incorrect argument"), typed chat works. `time query daytime` no longer exists (use `time query day`). Start with `--idle-tick` or ticks (and so the coordinator) stall.
+  A new throwaway world may be named `New World (1)`; its store is `<gameDir>/savepoints/<that name>`.
+- Fixed a chunk-2 cosmetic: `/savepoint list` showed `[[id]]`.
+- Not verified: LAN-hosted worlds (other players are simply disconnected by the server stop; untested), a real world with mods/large size (restore of big worlds is
+  progress-bar territory but untested), the progress bar fill (screenshot only showed the bar at 0 because the delay hack gives few callbacks), reopen when the world
+  open flow shows its own warning screens (onCancel routes to an AlertScreen). The world-open `onCancel` path is untested. Restore needs the world closed: if a
+  previous server thread were still holding region files (not seen on Linux) the restore would fail cleanly and show the error.
+- Open: the integrated server's own final save on stop is harmless (restore happens after). "Before revert" undo points are all named identically; chunk 4 UI could
+  show the target name/time in the list. After a revert the old `SavepointService` is gone and a new one is created on rejoin (list payloads must be re-requested).

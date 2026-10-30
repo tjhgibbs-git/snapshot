@@ -6,5 +6,6 @@ import net.fabricmc.api.ClientModInitializer;
 public final class SavepointClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
+        RevertCoordinator.register();
     }
 }

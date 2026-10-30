@@ -6,7 +6,7 @@ import java.util.Locale;
 
 /**
  * Turns what a person types into a savepoint: full id, short id (the 4 hex digits at the end, or any unique
- * prefix/suffix of the id), "latest", exact name, or a unique name prefix (case-insensitive).
+ * prefix/suffix of the id), "latest", "undo" (the newest automatic before-revert point), exact name, or a unique name prefix (case-insensitive).
  */
 public final class IdResolver {
     private IdResolver() {}
@@ -33,6 +33,10 @@ public final class IdResolver {
         for (Manifest m : all) if (m.id().equals(t)) return new Found(m);
         if (lower.equals("latest") || lower.equals("last")) {
             return all.isEmpty() ? new NotFound(t) : new Found(all.get(0));
+        }
+        if (lower.equals("undo")) {
+            for (Manifest m : all) if (m.kind() == Manifest.Kind.UNDO) return new Found(m);
+            return new NotFound(t);
         }
         List<Manifest> hits = new ArrayList<>();
         for (Manifest m : all) {

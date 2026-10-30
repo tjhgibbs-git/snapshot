@@ -52,5 +52,30 @@
   "savepoint.msg.config_header": "Savepoint settings (change with /savepoint config <key> <value>):",
   "savepoint.msg.config_line": "%s = %s - %s",
   "savepoint.msg.config_set": "Set %s to %s.",
-  "savepoint.msg.config_bad": "Cannot set %s: %s"
+  "savepoint.msg.config_bad": "Cannot set %s: %s",
+
+  "savepoint.msg.revert_owner_only": "Only the world owner (the host) can revert.",
+  "savepoint.msg.revert_no_client": "Revert needs the Savepoint mod on the client as well.",
+  "savepoint.msg.revert_undo_failed": "Revert cancelled, nothing was changed. The safety savepoint could not be made: %s",
+  "savepoint.msg.revert_target_pruned": "Revert cancelled, nothing was changed. \"%s\" was removed to make room for the safety savepoint; raise the disk budget.",
+  "savepoint.msg.revert_starting": "Reverting to \"%s\". Your current state was saved as [%s] (undo with /savepoint revert undo).",
+
+  "savepoint.revert.title": "Reverting to %s...",
+  "savepoint.revert.phase.saving": "Saving and closing the world",
+  "savepoint.revert.phase.restoring": "Restoring files...",
+  "savepoint.revert.phase.cancelling": "Cancelling...",
+  "savepoint.revert.phase.reopening": "Reopening the world",
+  "savepoint.revert.undo_button": "Undo",
+  "savepoint.revert.undo_hover": "Go back to how the world was before this revert",
+  "savepoint.revert.done": "Reverted to \"%s\". Undo with /savepoint revert undo",
+  "savepoint.revert.toast_done": "Reverted",
+  "savepoint.revert.toast_done_body": "Back at \"%s\". Undo with /savepoint revert undo",
+  "savepoint.revert.cancelled": "Revert cancelled. The world was not changed.",
+  "savepoint.revert.toast_cancelled": "Revert cancelled",
+  "savepoint.revert.failed": "Revert failed, your world was left exactly as it was before the revert started: %s",
+  "savepoint.revert.failed_short": "World left unchanged. See chat.",
+  "savepoint.revert.toast_failed": "Revert failed",
+  "savepoint.revert.stranded_title": "Savepoint could not reopen your world",
+  "savepoint.revert.stranded_body": "The revert did not complete and the world was left unchanged, but it could not be reopened automatically: %s. Open it from the world list.",
+  "savepoint.revert.stranded_after_ok": "The revert finished, but the world could not be reopened automatically: %s. Open it from the world list. To undo, use /savepoint revert undo."
 }

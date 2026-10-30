@@ -10,6 +10,7 @@ final class SavepointNetworking {
 
     static void register() {
         PayloadTypeRegistry.clientboundPlay().register(SavepointPayloads.ListPayload.TYPE, SavepointPayloads.ListPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SavepointPayloads.BeginRevertPayload.TYPE, SavepointPayloads.BeginRevertPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.RequestListPayload.TYPE, SavepointPayloads.RequestListPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.CreatePayload.TYPE, SavepointPayloads.CreatePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(SavepointPayloads.DeletePayload.TYPE, SavepointPayloads.DeletePayload.CODEC);

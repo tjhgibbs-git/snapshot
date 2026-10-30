@@ -55,7 +55,9 @@ public final class SavepointService {
     private final SavepointStore store;
     private final Path worldDir;
     private final Path backupDir;
-    private final Cooldown cooldown = new Cooldown();
+    private final Path storeRoot;
+    /** Static so the revert cooldown survives the server restart a revert causes. */
+    private static final Cooldown cooldown = new Cooldown();
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "Savepoint-worker");
         t.setDaemon(true);
@@ -69,6 +71,7 @@ public final class SavepointService {
     private SavepointService(MinecraftServer server, Path worldDir, Path storeRoot) throws IOException {
         this.server = server;
         this.worldDir = worldDir;
+        this.storeRoot = storeRoot;
         this.store = new SavepointStore(storeRoot);
         this.backupDir = storeRoot.resolve("backups");
         Files.createDirectories(backupDir);
@@ -143,6 +146,10 @@ public final class SavepointService {
 
     public SavepointStore store() {
         return store;
+    }
+
+    public Path storeRoot() {
+        return storeRoot;
     }
 
     public Path worldDir() {
@@ -336,7 +343,7 @@ public final class SavepointService {
         p.sendSystemMessage(Component.translatable("savepoint.msg.list_header", all.size()));
         long now = System.currentTimeMillis();
         for (Manifest m : all) {
-            MutableComponent id = action(Component.literal("[" + IdResolver.shortId(m) + "]"), "/savepoint info " + m.id(),
+            MutableComponent id = action(Component.literal(IdResolver.shortId(m)), "/savepoint info " + m.id(),
                     Component.translatable("savepoint.msg.info_hover"), ChatFormatting.YELLOW);
             p.sendSystemMessage(Component.translatable("savepoint.msg.list_line", id, m.name(), Fmt.age(now - m.createdMillis()),
                     Fmt.bytes(m.logicalBytes()), flags(m)));

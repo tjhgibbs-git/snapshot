@@ -15,6 +15,7 @@ public final class SavepointMod implements ModInitializer {
     public void onInitialize() {
         SavepointConfig.load();
         SavepointNetworking.register();
+        SavepointService.setRevertHandler(RevertFlow::begin);
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> SavepointCommands.register(dispatcher));
         ServerLifecycleEvents.SERVER_STARTED.register(SavepointService::start);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> SavepointService.stop());
