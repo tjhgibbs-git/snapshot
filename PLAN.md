@@ -77,7 +77,7 @@ Store at `<gameDir>/savepoints/<worldFolderName>/`:
 
 ## Progress
 (update this list at the end of every chunk)
-- [x] 0  - [x] 1  - [x] 2  - [x] 3  - [ ] 4  - [ ] 5 (review/polish)  - [ ] 6 (ship)
+- [x] 0  - [x] 1  - [x] 2  - [x] 3  - [x] 4  - [ ] 5 (review/polish)  - [ ] 6 (ship)
 
 ## Notes for next chunk
 - Build: `export JAVA_HOME=~/.local/jdk/jdk-25.0.5+8 PATH=$JAVA_HOME/bin:$PATH; ./gradlew build` (~45 s warm).
@@ -159,3 +159,18 @@ Timings (tiny flat world, llvmpipe, idle-tick): command -> server stopped ~0.6-0
   previous server thread were still holding region files (not seen on Linux) the restore would fail cleanly and show the error.
 - Open: the integrated server's own final save on stop is harmless (restore happens after). "Before revert" undo points are all named identically; chunk 4 UI could
   show the target name/time in the list. After a revert the old `SavepointService` is gone and a new one is created on rejoin (list payloads must be re-requested).
+
+## Notes for next chunk (from chunk 4: UI)
+Client package `io.github.tjhgibbs.savepoint.client`: `SavepointScreen` (list + detail panel + create row + usage bar; arrows/PgUp/PgDn/Home/End/Del),
+`SavepointSettingsScreen` (rows from `Settings.specs()`, step sliders, debounced ConfigSet sends, per-world heading), `RevertConfirmScreen`
+(quick-revert key pressed again confirms; Shift+F8 skips the dialog), `PromptScreen` (rename), `ClientState` (last ListPayload + local cooldown clock),
+`Thumbs` (lazy thumbnail fetch, DynamicTextures released on screen close), `SceneShots` (frame grabbed when a screen opens / F7, shrunk to a 16:9 PNG
+by `PngEncoder`, uploaded on CreatedPayload; undo points get it written straight into the store by `RevertCoordinator`), `UsageBar`, `ClientFmt`, `Names`.
+Keys: K open, F7 quick save, F8 quick revert (checked against Axiom/WorldEdit/Sylvan/Capella/Stacksmith). "Savepoints" button top-left of the pause menu.
+- Verified with block-scraper: 854x480, 1280x720 (scale 3), 1920x1080 at scale 2 and 4, de_de fallback; create/quick/pin/revert via the UI; settings slider
+  reaches the server and the config file. Revert via UI: total ~4.1 s (stop 0.9 s, restore 58 ms, reopen 3.1 s).
+- block-scraper disables toasts, so toasts (saved / cooldown / unavailable) cannot be seen in shots. `reload`/`restart` need JAVA_HOME exported.
+- Fixed during review: Create/Quick buttons clipped "Create (9s)"; action bar stuck on "Saving savepoint... 0%"; backup offer repeated after every save
+  (now once per world per game session); pinned quick showed "replaced by the next quick save"; detail thumbnail hid the text at large GUI scales.
+- Open for chunk 5: at GUI scale 3 / 720p the detail panel has no room for a thumbnail and drops the last line ("Deleting frees"); settings changes from
+  the GUI also print a "Set key to value." chat line.

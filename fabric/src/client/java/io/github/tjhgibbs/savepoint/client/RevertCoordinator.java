@@ -62,6 +62,7 @@ public final class RevertCoordinator {
     private int waitTicks;
     private int titleTicks;
     private long t0, tRestoreStart, tRestoreEnd, tReopen;
+    private byte[] undoThumbnail;
 
     private RevertCoordinator(SavepointPayloads.BeginRevertPayload req) {
         this.req = req;
@@ -134,6 +135,7 @@ public final class RevertCoordinator {
 
     private void disconnectAndStartRestore(Minecraft mc) {
         t0 = System.nanoTime();
+        undoThumbnail = SceneShots.fresh(); // before the disconnect, which clears the shots
         phase = Phase.RESTORE; // set first: the disconnect pumps frames and re-enters ticks? no, but keep state consistent
         phaseLabel = "";
         try {
@@ -158,6 +160,7 @@ public final class RevertCoordinator {
     private void restoreWorker() {
         try {
             SavepointStore store = new SavepointStore(Path.of(req.storeRoot()));
+            attachUndoThumbnail(store);
             store.restore(Path.of(req.worldDir()), req.targetId(), new OperationControl() {
                 @Override
                 public void progress(String phase, long d, long t) {
@@ -181,6 +184,20 @@ public final class RevertCoordinator {
         } finally {
             tRestoreEnd = System.nanoTime();
             workerFinished = true;
+        }
+    }
+
+    /**
+     * The undo point was taken by a server that is now gone, so the usual thumbnail upload cannot reach it; write the
+     * last scene shot straight into the store instead. Cosmetic: failures are ignored.
+     */
+    private void attachUndoThumbnail(SavepointStore store) {
+        byte[] png = undoThumbnail;
+        if (png == null || req.undoId() == null || req.undoId().isEmpty()) return;
+        try {
+            store.setThumbnail(req.undoId(), png);
+        } catch (Exception e) {
+            SavepointMod.LOG.debug("Revert: could not attach the undo thumbnail", e);
         }
     }
 

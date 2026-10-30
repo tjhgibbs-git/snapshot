@@ -76,6 +76,8 @@ public final class SavepointService {
     private final AtomicBoolean backupRunning = new AtomicBoolean();
     private final AtomicBoolean stopping = new AtomicBoolean();
     private volatile boolean backupDoneThisSession;
+    /** Store roots whose "want a full backup?" line was already shown this game session: ask once, not after every save. */
+    private static final java.util.Set<Path> backupOffered = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private long lastProgressNanos;
 
     private SavepointService(MinecraftServer server, Path worldDir, Path storeRoot) throws IOException {
@@ -271,12 +273,14 @@ public final class SavepointService {
             m = capture(p, meta, true);
         } catch (IOException | RuntimeException e) {
             SavepointMod.LOG.error("Savepoint create failed", e);
+            p.sendSystemMessage(Component.empty(), true);
             p.sendSystemMessage(Component.translatable("savepoint.msg.create_failed", String.valueOf(e.getMessage())).withStyle(ChatFormatting.RED));
             return null;
         }
         markCooldown();
         long ms = (System.nanoTime() - t0) / 1_000_000;
         SavepointMod.LOG.info("Savepoint {} created in {} ms", m.id(), ms);
+        p.sendSystemMessage(Component.empty(), true); // clear the "Saving... N%" action bar
         p.sendSystemMessage(createdLine(m));
         if (ServerPlayNetworking.canSend(p, SavepointPayloads.CreatedPayload.TYPE)) {
             ServerPlayNetworking.send(p, new SavepointPayloads.CreatedPayload(m.id(), m.name(), m.kind().json(), ms));
@@ -302,7 +306,7 @@ public final class SavepointService {
         switch (settings().fullBackupMode()) {
             case EVERY -> startBackup(p, true);
             case SESSION -> {
-                if (!backupDoneThisSession && !backupRunning.get()) {
+                if (!backupDoneThisSession && !backupRunning.get() && backupOffered.add(storeRoot)) {
                     p.sendSystemMessage(Component.translatable("savepoint.msg.backup_offer",
                             action(Component.translatable("savepoint.msg.backup_button"), "/savepoint backup",
                                     Component.translatable("savepoint.msg.backup_hover"), ChatFormatting.AQUA)));
