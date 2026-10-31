@@ -192,3 +192,13 @@ Keys: K open, F7 quick save, F8 quick revert (checked against Axiom/WorldEdit/Sy
   pause (first savepoint must hash everything; later ones only changed chunks), toasts (block-scraper hides them). Review finding left as-is:
   WorldSettings/SavepointConfig duplicate a small properties load/apply loop.
 - `./gradlew build` now also runs the gametests (`runGameTest`).
+
+## Checked once: complex NBT fidelity (2026-10-31)
+- Verified (one-off, passed): chests of shulker boxes packed with heavily-loaded items (all enchantments, every attribute x operation with
+  extreme doubles, max-ish lore, custom_data with long/int/byte arrays, MIN/MAX values, 64-deep nesting, 60k-char string, null char and
+  astral unicode), a configured spawner (SpawnData with equipment, SpawnPotentials), and an equipped armor stand. Savepoint -> restore into an
+  empty dir -> all 19,510 chunks (region/entities/poi) decode with the game's own reader to identical NBT; block entities equal the in-memory
+  save (apart from the chunk serializer's `keepPacked`) and reload losslessly. The test chunk went external (11.8 MB of `.mcc`), so that path is covered too.
+- Not part of the normal build (adds ~40 s; the design keeps chunk payloads opaque, so there's no need to repeat it). The test is kept at
+  `fabric/src/gametest/.../ComplexNbtGameTests.java` but not registered; to rerun, add it to the `fabric-gametest` entrypoints in
+  `fabric/src/gametest/resources/fabric.mod.json` and run `./gradlew :fabric:runGameTest`.
